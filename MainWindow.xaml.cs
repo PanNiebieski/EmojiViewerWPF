@@ -23,6 +23,8 @@ public partial class MainWindow : Window
     private const string FavoriteEmojisFile = "favorite_emojis.json";
     private const int MaxRecentEmojis = 80;
 
+    private TabControl mainTabControl;
+
     public MainWindow()
     {
         InitializeComponent();
@@ -32,19 +34,25 @@ public partial class MainWindow : Window
         //CreateTabs();
 
         // Root layout
+        // Root layout
         var root = new DockPanel
         {
             LastChildFill = true,
             Background = new SolidColorBrush(Color.FromRgb(32, 32, 32))
         };
 
-        // === Top button row ===
+        // === Top button row with title bar ===
+        var titleBar = new DockPanel
+        {
+            Height = 30,
+            Background = new SolidColorBrush(Color.FromRgb(20, 20, 20)),
+            LastChildFill = true  // Add this to fill remaining space with dragArea
+        };
+
+        // Window buttons (right side) - ADD FIRST
         var buttonRow = new StackPanel
         {
-            Orientation = Orientation.Horizontal,
-            HorizontalAlignment = HorizontalAlignment.Right,
-            Height = 30,
-            Background = new SolidColorBrush(Color.FromRgb(20, 20, 20))
+            Orientation = Orientation.Horizontal
         };
 
         var btnMin = CreateWindowButton("─");
@@ -65,12 +73,38 @@ public partial class MainWindow : Window
         buttonRow.Children.Add(btnMax);
         buttonRow.Children.Add(btnClose);
 
-        DockPanel.SetDock(buttonRow, Dock.Top);
-        root.Children.Add(buttonRow);
+        DockPanel.SetDock(buttonRow, Dock.Right);  // Dock to right
+        titleBar.Children.Add(buttonRow);  // Add buttons first
+
+        // Draggable area (fills remaining space) - ADD SECOND
+        var dragArea = new Border
+        {
+            Background = Brushes.Transparent,
+            Cursor = Cursors.SizeAll
+        };
+
+        dragArea.MouseLeftButtonDown += (s, e) =>
+        {
+            if (e.ClickCount == 1)
+            {
+                this.DragMove();
+            }
+            else if (e.ClickCount == 2)
+            {
+                this.WindowState = this.WindowState == WindowState.Maximized
+                    ? WindowState.Normal
+                    : WindowState.Maximized;
+            }
+        };
+
+        titleBar.Children.Add(dragArea);  // Add dragArea last (will fill remaining space)
+
+        DockPanel.SetDock(titleBar, Dock.Top);
+        root.Children.Add(titleBar);
 
         // === Tabs ===
-        var tabs = CreateTabs();
-        root.Children.Add(tabs);
+        mainTabControl = CreateTabs();
+        root.Children.Add(mainTabControl);
 
         this.Content = root;
     }
@@ -587,30 +621,51 @@ public partial class MainWindow : Window
             Tag = emoji
         };
 
-        // Add context menu
+        // Add improved context menu with custom style
         var contextMenu = new ContextMenu
         {
-            Background = new SolidColorBrush(Color.FromRgb(50, 50, 50)),
-            Foreground = Brushes.White
+            Background = new SolidColorBrush(Color.FromRgb(45, 45, 45)),
+            BorderBrush = new SolidColorBrush(Color.FromRgb(70, 70, 70)),
+            BorderThickness = new Thickness(1),
+            Padding = new Thickness(4),
+            HasDropShadow = true,
+            Style = CreateContextMenuStyle()
         };
 
         var favoriteMenuItem = new MenuItem
         {
-            Header = favoriteEmojis.Contains(emoji) ? "Remove from Favorites" : "Add to Favorites",
-            Background = new SolidColorBrush(Color.FromRgb(50, 50, 50)),
+            Header = CreateMenuHeader(
+                favoriteEmojis.Contains(emoji) ? "Remove from Favorites" : "Add to Favorites",
+                favoriteEmojis.Contains(emoji) ? "❤️" : "🤍"
+            ),
+            Background = new SolidColorBrush(Color.FromRgb(45, 45, 45)),
             Foreground = Brushes.White,
-            Icon = favoriteEmojis.Contains(emoji) ? CreateEmojiImage2("❤️") : CreateEmojiImage2("🤍")
+            Height = 32,
+            Padding = new Thickness(8, 4, 8, 4),
+            Icon = CreateCleanEmojiIcon(favoriteEmojis.Contains(emoji) ? "❤️" : "🤍")
         };
         favoriteMenuItem.Click += (s, e) => ToggleFavoriteFromContext(emoji, favoriteMenuItem);
 
         var copyCodeMenuItem = new MenuItem
         {
-            Header = "Copy Unicode",
-            Background = new SolidColorBrush(Color.FromRgb(50, 50, 50)),
+            Header = CreateMenuHeader("Copy Unicode", "📋"),
+            Background = new SolidColorBrush(Color.FromRgb(45, 45, 45)),
             Foreground = Brushes.White,
-            Icon = CreateEmojiImage2("📋")
+            Height = 32,
+            Padding = new Thickness(8, 4, 8, 4),
+            Icon = CreateCleanEmojiIcon("📋")
         };
         copyCodeMenuItem.Click += (s, e) => CopyEmojiCode(emoji);
+
+        // Style for menu item hover
+        var menuItemStyle = new Style(typeof(MenuItem));
+        var hoverTrigger = new Trigger { Property = MenuItem.IsHighlightedProperty, Value = true };
+        hoverTrigger.Setters.Add(new Setter(MenuItem.BackgroundProperty,
+            new SolidColorBrush(Color.FromRgb(60, 60, 60))));
+        menuItemStyle.Triggers.Add(hoverTrigger);
+
+        favoriteMenuItem.Style = menuItemStyle;
+        copyCodeMenuItem.Style = menuItemStyle;
 
         contextMenu.Items.Add(favoriteMenuItem);
         contextMenu.Items.Add(copyCodeMenuItem);
@@ -619,6 +674,64 @@ public partial class MainWindow : Window
         button.Click += (sender, e) => CopyToClipboard(emoji);
 
         return button;
+    }
+
+    private Style CreateContextMenuStyle()
+    {
+        var style = new Style(typeof(ContextMenu));
+
+        // Remove the default icon column background
+        var template = new ControlTemplate(typeof(ContextMenu));
+        var border = new FrameworkElementFactory(typeof(Border));
+        border.SetValue(Border.BackgroundProperty, new SolidColorBrush(Color.FromRgb(45, 45, 45)));
+        border.SetValue(Border.BorderBrushProperty, new SolidColorBrush(Color.FromRgb(70, 70, 70)));
+        border.SetValue(Border.BorderThicknessProperty, new Thickness(1));
+
+        var stackPanel = new FrameworkElementFactory(typeof(StackPanel));
+        stackPanel.SetValue(StackPanel.IsItemsHostProperty, true);
+
+        border.AppendChild(stackPanel);
+        template.VisualTree = border;
+
+        style.Setters.Add(new Setter(ContextMenu.TemplateProperty, template));
+
+        return style;
+    }
+
+    private TextBlock CreateCleanEmojiIcon(string emoji)
+    {
+        return new TextBlock
+        {
+            Text = emoji,
+            FontSize = 17,
+            Background = Brushes.Transparent,
+            Foreground = Brushes.White,
+            VerticalAlignment = VerticalAlignment.Center,
+            HorizontalAlignment = HorizontalAlignment.Center,
+            Margin = new Thickness(0)
+        };
+    }
+
+    private StackPanel CreateMenuHeader(string text, string emoji)
+    {
+        var panel = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            Margin = new Thickness(0)
+        };
+
+        // Don't add emoji here since it's in the Icon now
+        var labelText = new TextBlock
+        {
+            Text = text,
+            FontSize = 13,
+            VerticalAlignment = VerticalAlignment.Center,
+            Foreground = Brushes.White
+        };
+
+        panel.Children.Add(labelText);
+
+        return panel;
     }
 
     private void ToggleFavoriteFromContext(string emoji, MenuItem menuItem)
@@ -632,29 +745,29 @@ public partial class MainWindow : Window
 
     private void RefreshAllTabs()
     {
-        // Find and refresh Recent and Favorites tabs
-        var mainTabControl = this.Content as TabControl;
-        if (mainTabControl != null)
+        if (mainTabControl == null) return;
+
+        foreach (TabItem tab in mainTabControl.Items)
         {
-            foreach (TabItem tab in mainTabControl.Items)
+            var config = tab.Tag as TabConfig;
+            if (config == null) continue;
+
+            if (config.Name == "Recent")
             {
-                if (tab.Header.ToString() == "Recent")
+                var scrollViewer = tab.Content as ScrollViewer;
+                var panel = scrollViewer?.Content as WrapPanel;
+                if (panel != null)
                 {
-                    var scrollViewer = tab.Content as ScrollViewer;
-                    var panel = scrollViewer?.Content as WrapPanel;
-                    if (panel != null)
-                    {
-                        RefreshRecentEmojis(panel);
-                    }
+                    RefreshRecentEmojis(panel);
                 }
-                else if (tab.Header.ToString() == "Favorites")
+            }
+            else if (config.Name == "Favorites")
+            {
+                var scrollViewer = tab.Content as ScrollViewer;
+                var panel = scrollViewer?.Content as WrapPanel;
+                if (panel != null)
                 {
-                    var scrollViewer = tab.Content as ScrollViewer;
-                    var panel = scrollViewer?.Content as WrapPanel;
-                    if (panel != null)
-                    {
-                        RefreshFavoriteEmojis(panel);
-                    }
+                    RefreshFavoriteEmojis(panel);
                 }
             }
         }
@@ -704,23 +817,6 @@ public partial class MainWindow : Window
         return style;
     }
 
-    private Image CreateEmojiImage(string emoji)
-    {
-        var tb = new TextBlock
-        {
-            Text = emoji,
-            FontFamily = new FontFamily("Segoe UI Emoji"),
-            FontSize = 32
-        };
-
-        var rtb = new RenderTargetBitmap(50, 50, 96, 96, PixelFormats.Pbgra32);
-        tb.Measure(new Size(50, 50));
-        tb.Arrange(new Rect(new Size(50, 50)));
-        rtb.Render(tb);
-
-        return new Image { Source = rtb, Width = 45, Height = 45 };
-    }
-
     private Image CreateEmojiImage2(string emoji)
     {
         var tb = new TextBlock
@@ -743,24 +839,74 @@ public partial class MainWindow : Window
     {
         try
         {
-            Clipboard.SetText(emoji);
+            // Retry mechanism for clipboard operations
+            int maxRetries = 3;
+            bool success = false;
+
+            for (int i = 0; i < maxRetries && !success; i++)
+            {
+                try
+                {
+                    Clipboard.SetDataObject(emoji, true); // true = keep data after app closes
+                    success = true;
+                }
+                catch (System.Runtime.InteropServices.COMException)
+                {
+                    // Clipboard is busy, wait a bit and retry
+                    System.Threading.Thread.Sleep(100);
+
+                    //await Task.Delay(10);
+                }
+            }
+
+            if (!success)
+            {
+                throw new Exception("Clipboard is busy");
+            }
+
             AddToRecentEmojis(emoji);
             RefreshAllTabs();
 
-            // Optional: Show a brief visual feedback
-            this.Title = $"Emoji Viewer - Copied: {emoji}";
+            // Create and show tooltip
+            var tooltip = new ToolTip
+            {
+                Content = "Copied!",
+                IsOpen = true,
+                Placement = System.Windows.Controls.Primitives.PlacementMode.Mouse,
+                Background = new SolidColorBrush(Color.FromRgb(50, 50, 50)),
+                Foreground = Brushes.White,
+                BorderBrush = new SolidColorBrush(Color.FromRgb(0, 120, 215)),
+                BorderThickness = new Thickness(1),
+                Padding = new Thickness(8, 4, 8, 4),
+                FontSize = 12,
+                HasDropShadow = true,
+                StaysOpen = false
+            };
 
-            // Reset title after 1 second
+            // Auto-close tooltip after 1 second
             var timer = new System.Windows.Threading.DispatcherTimer
             {
-                Interval = TimeSpan.FromSeconds(1)
+                Interval = TimeSpan.FromMilliseconds(100)
             };
             timer.Tick += (s, e) =>
             {
-                this.Title = "Emoji Viewer";
+                tooltip.IsOpen = false;
                 timer.Stop();
             };
             timer.Start();
+
+            // Optional: Update window title as backup feedback
+            this.Title = $"Emoji Viewer - Copied: {emoji}";
+            var titleTimer = new System.Windows.Threading.DispatcherTimer
+            {
+                Interval = TimeSpan.FromMilliseconds(100)
+            };
+            titleTimer.Tick += (s, e) =>
+            {
+                this.Title = "Emoji Viewer";
+                titleTimer.Stop();
+            };
+            titleTimer.Start();
         }
         catch (Exception ex)
         {
@@ -768,62 +914,6 @@ public partial class MainWindow : Window
                 MessageBoxButton.OK, MessageBoxImage.Error);
         }
     }
-
-    //private void CreateTabs()
-    //{
-    //    var mainTabControl = new TabControl
-    //    {
-    //        Background = new SolidColorBrush(Color.FromRgb(30, 30, 30)),
-    //        BorderThickness = new Thickness(0),
-    //        TabStripPlacement = Dock.Top,
-    //        Style = CreateModernTabControlStyle()
-    //    };
-
-    //    // Add SelectionChanged event to handle tab transitions
-    //    mainTabControl.SelectionChanged += OnTabSelectionChanged;
-
-    //    // Define tab configurations with emojis and colors
-    //    var tabConfigs = new List<TabConfig>
-    //        {
-    //            new TabConfig { Name = "Faces", Emoji = "😀", Category = "Faces" },
-    //            new TabConfig { Name = "People", Emoji = "👤", Category = "People" },
-    //            new TabConfig { Name = "Leisure", Emoji = "🎯", Category = "Leisure" },
-    //            new TabConfig { Name = "Nature", Emoji = "🐾", Category = "Nature (Animals)" },
-    //            new TabConfig { Name = "Food", Emoji = "🍎", Category = "Food/Drinks" },
-    //            new TabConfig { Name = "City", Emoji = "🏙️", Category = "City" },
-    //            new TabConfig { Name = "Office", Emoji = "💼", Category = "Office" },
-    //            new TabConfig { Name = "IT/UI", Emoji = "💻", Category = "IT/UI" },
-    //            new TabConfig { Name = "Misc", Emoji = "🔷", Category = "MISC/Squares/Circles" },
-    //            new TabConfig { Name = "Recent", Emoji = "🕐", Category = null },
-    //            new TabConfig { Name = "Favorites", Emoji = "🧩", Category = null },
-    //        };
-
-    //    foreach (var config in tabConfigs)
-    //    {
-    //        var tabItem = CreateModernTabItem(config);
-
-    //        if (config.Category == null)
-    //        {
-    //            // Handle Recent and Favorites tabs
-    //            if (config.Name == "Recent")
-    //            {
-    //                tabItem.Content = CreateRecentTabContent();
-    //            }
-    //            else if (config.Name == "Favorites")
-    //            {
-    //                tabItem.Content = CreateFavoritesTabContent();
-    //            }
-    //        }
-    //        else if (emojiCategories.ContainsKey(config.Category))
-    //        {
-    //            tabItem.Content = CreateCategoryTabContent(emojiCategories[config.Category]);
-    //        }
-
-    //        mainTabControl.Items.Add(tabItem);
-    //    }
-
-    //    this.Content = mainTabControl;
-    //}
 
     // Now CreateTabs only builds and returns the TabControl
     private TabControl CreateTabs()
@@ -886,27 +976,6 @@ public partial class MainWindow : Window
             var headerPanel = tabItem.Header as DockPanel;
             if (headerPanel != null && headerPanel.Children.Count > 1)
             {
-                //var textLabel = headerPanel.Children[1] as TextBlock;
-                //if (textLabel != null)
-                //{
-                //    if (tabItem.IsSelected)
-                //    {
-                //        // Show text for selected tab
-                //        var fadeIn = new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(200));
-                //        textLabel.BeginAnimation(TextBlock.OpacityProperty, fadeIn);
-                //        //tabItem.Width = 250;
-                //        //headerPanel.HorizontalAlignment = HorizontalAlignment.Center;
-                //    }
-                //    else
-                //    {
-                //        // Hide text for unselected tabs
-                //        var fadeOut = new DoubleAnimation(textLabel.Opacity, 0, TimeSpan.FromMilliseconds(150));
-                //        textLabel.BeginAnimation(TextBlock.OpacityProperty, fadeOut);
-                //        //tabItem.Width = 70;
-                //        //headerPanel.HorizontalAlignment = HorizontalAlignment.Center;
-                //    }
-                //}
-
                 var textLabel = headerPanel.Children[0] as TextBlock;
                 if (textLabel != null)
                 {
@@ -930,15 +999,6 @@ public partial class MainWindow : Window
             Style = CreateModernTabItemStyle(),
             Tag = config
         };
-
-        // Create the header content
-        //var headerPanel = new StackPanel
-        //{
-        //    Orientation = Orientation.Horizontal,
-        //    VerticalAlignment = VerticalAlignment.Center,
-        //    HorizontalAlignment = HorizontalAlignment.Left,
-        //    Margin = new Thickness(0)
-        //};
 
         var headerPanel = new DockPanel
         {
